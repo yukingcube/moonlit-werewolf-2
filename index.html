@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌙 月夜の村に狼が来る</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700&family=Cinzel:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div class="fog-overlay"></div>
+    <div id="app">
+
+        <!-- タイトル画面 -->
+        <section id="screen-title" class="screen active">
+            <div class="title-content">
+                <div class="title-moon">🌙</div>
+                <h1 class="title-logo">
+                    <span class="title-main">月夜の村に狼が来る</span>
+                    <span class="title-sub">〜 AIを操る人狼 〜</span>
+                </h1>
+                <div class="title-buttons">
+                    <button class="btn-primary" data-action="start-solo"><span class="btn-icon">🎮</span><span class="btn-text">1人で遊ぶ</span></button>
+                    <button class="btn-primary" data-action="show-create-room"><span class="btn-icon">🏠</span><span class="btn-text">ルームを作成</span></button>
+                    <button class="btn-primary" data-action="show-join-room"><span class="btn-icon">🚪</span><span class="btn-text">ルームに参加</span></button>
+                </div>
+                <div class="title-sub-buttons">
+                    <button class="btn-link" data-action="show-rules">📜 ルール</button>
+                    <button class="btn-link" data-action="show-settings">⚙️ 設定</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 設定画面 -->
+        <section id="screen-settings" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="back-to-title">← 戻る</button><h2 class="screen-title">⚙️ 設定</h2></div>
+            <div class="settings-content">
+                <div class="settings-group"><h3 class="settings-group-title">👤 プレイヤー</h3>
+                    <div class="settings-item"><label for="input-name">表示名</label><input type="text" id="input-name" maxlength="12" placeholder="名前を入力(最大12文字)"></div></div>
+                <div class="settings-group"><h3 class="settings-group-title">🔑 Gemini APIキー(ホスト用)</h3>
+                    <div class="settings-item"><input type="password" id="input-api-key" placeholder="AIza...">
+                        <div class="settings-row"><button class="btn-small" data-action="toggle-api-visibility">👁 表示</button><button class="btn-small btn-danger" data-action="clear-api-key">🗑 クリア</button></div></div>
+                    <p class="settings-note">ホストとして遊ぶ場合に必要。参加者は不要。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">🔗 キーを取得</a></p></div>
+                <div class="settings-group"><h3 class="settings-group-title">🤖 使用モデル</h3>
+                    <div class="settings-item">
+                        <label class="radio-label"><input type="radio" name="model" value="gemini-2.5-flash" checked><span>Gemini 2.5 Flash(推奨)</span></label>
+                        <label class="radio-label"><input type="radio" name="model" value="gemini-2.5-flash-lite"><span>Gemini 2.5 Flash-Lite(軽量)</span></label>
+                    </div></div>
+                <div class="settings-group"><h3 class="settings-group-title">📜 About</h3><p class="settings-note">『月夜の村に狼が来る』 v0.5.0 (同期修正版)<br>制作: yukingcube / Life is Tech! School Cup 2026</p></div>
+            </div>
+        </section>
+
+        <!-- ルール画面 -->
+        <section id="screen-rules" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="back-to-title">← 戻る</button><h2 class="screen-title">📜 ルール</h2></div>
+            <div class="rules-content">
+                <div class="rules-section"><h3>🎯 目的</h3><p>人狼2人を見つけ出し処刑すれば村人陣営の勝利。人狼の数が村人陣営と同数以上になれば人狼陣営の勝利。</p></div>
+                <div class="rules-section"><h3>👥 役職(全7人)</h3><ul>
+                    <li>🐺 <strong>人狼(2人)</strong>: 夜に1人を襲撃</li><li>🔮 <strong>占い師(1人)</strong>: 夜に1人を占う</li>
+                    <li>🛡️ <strong>騎士(1人)</strong>: 夜に1人を護衛</li><li>👻 <strong>霊媒師(1人)</strong>: 前日処刑者の正体を知る</li>
+                    <li>🧑 <strong>村人(2人)</strong>: 議論と投票で貢献</li></ul></div>
+                <div class="rules-section"><h3>🌙 1日の流れ</h3><ol>
+                    <li><strong>夜</strong>: 能力者が行動(初日は襲撃なし)</li><li><strong>朝</strong>: 襲撃結果+AI発言</li>
+                    <li><strong>議論</strong>: AIへ伝言を送れる</li><li><strong>投票・処刑</strong>: 最多票が処刑</li></ol></div>
+                <div class="rules-section"><h3>✨ 特徴</h3><ul>
+                    <li>🤖 AIが足りない人数を埋める</li><li>📝 AIへ<strong>秘密の伝言</strong>を送れる</li>
+                    <li>🎭 性格で伝言への反応が変わる</li><li>💭 試合後AIの思考が公開される</li></ul></div>
+            </div>
+        </section>
+
+        <!-- ルーム作成画面 -->
+        <section id="screen-create-room" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="leave-room">← 戻る</button><h2 class="screen-title">🏠 ルーム作成</h2></div>
+            <div class="lobby-content">
+                <div id="room-creating" style="text-align:center;padding:40px;">
+                    <p>ルームを作成中…</p><div class="loading-spinner"></div>
+                </div>
+                <div id="room-lobby" style="display:none;">
+                    <div class="room-id-box">
+                        <p>ルームID(友達に共有してください)</p>
+                        <h2 id="room-id-display" class="room-id"></h2>
+                        <button class="btn-small" data-action="copy-room-id">📋 コピー</button>
+                    </div>
+                    <h3 class="lobby-title">参加者 <span id="player-count">1</span>/7</h3>
+                    <div id="players-list" class="players-list"></div>
+                    <div class="bottom-action">
+                        <button class="btn-primary" data-action="host-start-game" id="btn-host-start">
+                            <span class="btn-icon">🌙</span><span class="btn-text">ゲーム開始</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ルーム参加画面 -->
+        <section id="screen-join-room" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="back-to-title">← 戻る</button><h2 class="screen-title">🚪 ルームに参加</h2></div>
+            <div class="join-content">
+                <div class="settings-group">
+                    <h3 class="settings-group-title">ルームID(6桁)</h3>
+                    <input type="text" id="input-room-id" maxlength="6" placeholder="例: B7K3MX" class="room-id-input">
+                </div>
+                <div class="bottom-action">
+                    <button class="btn-primary" data-action="do-join-room"><span class="btn-text">参加する</span></button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ゲスト用ロビー -->
+        <section id="screen-guest-lobby" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="leave-room">← 退出</button><h2 class="screen-title">🚪 ロビー</h2></div>
+            <div class="lobby-content">
+                <div class="room-id-box">
+                    <p>ルームID</p><h2 id="guest-room-id" class="room-id"></h2>
+                </div>
+                <h3 class="lobby-title">参加者 <span id="guest-player-count">0</span>/7</h3>
+                <div id="guest-players-list" class="players-list"></div>
+                <p class="settings-note" style="text-align:center;margin-top:20px;">ホストがゲームを開始するのを待っています…</p>
+            </div>
+        </section>
+
+        <!-- ローディング -->
+        <section id="screen-loading" class="screen">
+            <div class="loading-content"><div class="loading-moon">🌙</div><h2 class="loading-title" id="loading-title">村人たちが集まっています…</h2><p class="loading-message" id="loading-message">AIキャラクターを生成中…</p><div class="loading-spinner"></div></div>
+        </section>
+
+        <!-- キャラ紹介 -->
+        <section id="screen-characters" class="screen">
+            <div class="screen-header"><h2 class="screen-title">🏘️ 村の住人</h2></div>
+            <div class="characters-grid" id="characters-grid"></div>
+            <div class="bottom-action"><button class="btn-primary" data-action="go-to-role" id="btn-go-to-role"><span class="btn-icon">🌙</span><span class="btn-text">役職を確認</span></button></div>
+        </section>
+
+        <!-- 役職確認 -->
+        <section id="screen-role" class="screen">
+            <div class="role-content"><p class="role-greeting" id="role-greeting">あなたの役職は…</p>
+                <div class="role-card"><div class="role-icon" id="role-icon"></div><div class="role-name" id="role-name"></div><div class="role-description" id="role-description"></div><div class="role-allies" id="role-allies"></div></div>
+                <button class="btn-primary" data-action="role-confirmed"><span class="btn-text">確認した</span></button></div>
+        </section>
+
+        <!-- 夜フェーズ -->
+        <section id="screen-night" class="screen">
+            <div class="night-content"><div class="night-moon">🌙</div><h2 class="night-title" id="night-title">夜がきた</h2><p class="night-subtitle" id="night-subtitle">村は眠りについた…</p><div class="night-action" id="night-action"></div></div>
+        </section>
+
+        <!-- 朝フェーズ -->
+        <section id="screen-morning" class="screen">
+            <div class="morning-content">
+                <div class="morning-header"><div class="morning-sun">☀️</div><h2 class="morning-title" id="morning-title">朝がきた</h2><p class="morning-attack-result" id="morning-attack-result"></p></div>
+                <div class="speeches-container" id="speeches-container"></div>
+                <div class="bottom-action"><button class="btn-primary" data-action="go-to-discussion" id="btn-to-discussion" style="display:none;"><span class="btn-text">議論へ</span></button></div>
+            </div>
+        </section>
+
+        <!-- 議論フェーズ -->
+        <section id="screen-discussion" class="screen">
+            <div class="discussion-header"><div class="timer" id="discussion-timer">3:00</div><div class="day-label" id="discussion-day">Day 1</div></div>
+            <div id="werewolf-allies-box" class="werewolf-allies-box" style="display:none;"><div class="werewolf-allies-title">🐺 仲間</div><div id="werewolf-allies-names"></div></div>
+            <div id="dead-spectator-box" class="dead-spectator-box" style="display:none;">🪦 あなたは亡くなりました。観戦モードです。</div>
+            <div class="alive-players" id="alive-players"></div>
+            <div class="speech-log-box"><h3 class="speech-log-title">💬 AI発言ログ</h3><div class="speech-log-list" id="speech-log-list"></div></div>
+            <div class="message-box" id="message-box-wrapper">
+                <h3 class="message-title">📝 AIへの伝言(秘密)</h3>
+                <p class="message-note">あなたの名前付きでAIに届きます。</p>
+                <textarea id="message-input" maxlength="100" placeholder="例: タロウさんの発言が怪しい..."></textarea>
+                <div class="message-footer"><span id="message-count">0/100</span></div>
+            </div>
+            <div class="discussion-bottom">
+                <button class="btn-primary" data-action="end-discussion" id="btn-end-discussion"><span class="btn-text">議論を終了する</span></button>
+            </div>
+        </section>
+
+        <!-- 投票処理中 -->
+        <section id="screen-voting-process" class="screen">
+            <div class="loading-content"><div class="loading-moon">🗳️</div><h2 class="loading-title">投票を集計しています…</h2><p class="loading-message">伝言を読み判断中</p><div class="loading-spinner"></div></div>
+        </section>
+
+        <!-- 投票 -->
+        <section id="screen-voting" class="screen">
+            <div class="voting-header"><h2 class="screen-title">🗳️ 誰を処刑する?</h2></div>
+            <div class="voting-grid" id="voting-grid"></div>
+        </section>
+
+        <!-- 処刑演出 -->
+        <section id="screen-execution" class="screen">
+            <div class="execution-content"><h2 class="execution-title">投票結果</h2><div class="execution-votes" id="execution-votes"></div><div class="execution-result" id="execution-result"></div>
+                <button class="btn-primary" data-action="continue-game" id="btn-continue" style="display:none;"><span class="btn-text">次へ</span></button></div>
+        </section>
+
+        <!-- 結果 -->
+        <section id="screen-result" class="screen">
+            <div class="result-content"><div class="result-header"><div class="result-icon" id="result-icon"></div><h2 class="result-title" id="result-title"></h2></div>
+                <div class="result-players" id="result-players"></div>
+                <div class="result-actions">
+                    <button class="btn-primary" data-action="show-thoughts" id="btn-show-thoughts"><span class="btn-icon">💭</span><span class="btn-text">AIの思考を見る</span></button>
+                    <button class="btn-primary" data-action="play-again"><span class="btn-icon">🔄</span><span class="btn-text">もう一度遊ぶ</span></button>
+                    <button class="btn-link" data-action="back-to-title">タイトルに戻る</button>
+                </div></div>
+        </section>
+
+        <!-- 思考ログ -->
+        <section id="screen-thoughts" class="screen">
+            <div class="screen-header"><button class="btn-back" data-action="back-to-result">← 結果に戻る</button><h2 class="screen-title">💭 AIたちの思考</h2></div>
+            <div class="thoughts-content" id="thoughts-content"></div>
+        </section>
+
+        <!-- モーダル群 -->
+        <div id="char-modal" class="modal-overlay"><div class="modal-content char-modal-content" id="char-modal-content"></div></div>
+        <div id="modal-overlay" class="modal-overlay"><div class="modal-content"><p id="modal-message"></p><div class="modal-buttons"><button class="btn-primary" data-action="close-modal">OK</button></div></div></div>
+        <div id="confirm-modal" class="modal-overlay"><div class="modal-content"><p id="confirm-message"></p><div class="modal-buttons" style="gap:15px;"><button class="btn-primary btn-confirm-no" id="btn-confirm-no">キャンセル</button><button class="btn-primary btn-confirm-yes" id="btn-confirm-yes">OK</button></div></div></div>
+    </div>
+
+    <!-- Firebase SDK (CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+        import { getDatabase, ref, set, get, onValue, update, off, remove, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDOQgdZ9c1f0SWIYwC595s9zk1zrT0vhGQ",
+            authDomain: "moonlit-werewolf.firebaseapp.com",
+            databaseURL: "https://moonlit-werewolf-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "moonlit-werewolf",
+            storageBucket: "moonlit-werewolf.firebasestorage.app",
+            messagingSenderId: "100215922434",
+            appId: "1:100215922434:web:eb51b52c5f4b528a1d6c1b"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // グローバルに公開
+        window.fbFunctions = { ref, set, get, onValue, update, off, remove, onDisconnect, serverTimestamp };
+        window.fbDb = db;
+        window.fbAuth = auth;
+
+        signInAnonymously(auth).catch(e => console.error('Auth error:', e));
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log('🔥 Firebase認証完了:', user.uid);
+                window.currentUserId = user.uid;
+                window.dispatchEvent(new CustomEvent('firebase-ready'));
+            }
+        });
+    </script>
+
+    <script src="js/gameData.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/firebase.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
