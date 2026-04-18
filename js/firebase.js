@@ -17,7 +17,9 @@ function generateRoomId() {
 }
 
 // Firebase helpers
-function fbRef(path) { return window.fbFunctions.ref(fbDb, path); }
+function fbRef(path) {
+    return path ? window.fbFunctions.ref(fbDb, path) : window.fbFunctions.ref(fbDb);
+}
 async function fbSet(path, data) { return window.fbFunctions.set(fbRef(path), data); }
 async function fbGet(path) { const s = await window.fbFunctions.get(fbRef(path)); return s.exists() ? s.val() : null; }
 function fbOnValue(path, cb) { return window.fbFunctions.onValue(fbRef(path), s => cb(s.val())); }
