@@ -92,12 +92,13 @@ function stopWatchingGame() {
 // ============================================
 async function fbWritePhase(phase, data) {
     if (!currentRoomId || !isHost) return;
-    // phase と phaseData を同時に更新
-    const updates = {};
-    updates[`rooms/${currentRoomId}/game/phase`] = phase;
-    updates[`rooms/${currentRoomId}/game/phaseData`] = data || {};
-    updates[`rooms/${currentRoomId}/game/phaseVersion`] = Date.now();
-    await window.fbFunctions.update(fbRef(''), updates);
+    const gamePath = `rooms/${currentRoomId}/game`;
+    const updates = {
+        phase: phase,
+        phaseData: data || {},
+        phaseVersion: Date.now()
+    };
+    await window.fbFunctions.update(fbRef(gamePath), updates);
 }
 
 async function fbWriteRoles(rolesByUid) {
