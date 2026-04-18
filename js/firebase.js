@@ -1,267 +1,197 @@
 /* ============================================
-   firebase.js - 同期プロトコル (v0.5.0 再設計版)
-
-   【設計原則】
-   1. ホストが唯一の真実の源 (Single Source of Truth)
-   2. フェーズ切替ごとに turnId (ユニーク数値) を発行
-      → 同じフェーズ名でも Day が進めば turnId が変わるため、
-        ゲストは turnId の差分だけを監視すれば取りこぼさない
-   3. ゲストは /rooms/<id>/sync を購読して画面を更新
-   4. ゲストは /rooms/<id>/inbox/<day>/<userId>/* に自分のアクションを書き込む
-   5. ホストは必要なタイミングでアクションを読み取る
+   firebase.js v0.5 - Firebase マルチプレイ(同期付き)
    ============================================ */
 
-let fbReady = false;
 let fbDb = null;
-let fbAuth = null;
 let currentRoomId = null;
 let isHost = false;
-let roomUnsubscribers = []; // 全監視解除用
+let _roomWatcher = null;
+let _readyWatcher = null;
 
 function getCurrentUserId() { return window.currentUserId || null; }
 
 function generateRoomId() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let id = '';
-    for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let id = ''; for (let i = 0; i < 6; i++) id += c[Math.floor(Math.random() * c.length)];
     return id;
 }
 
-// ============================================
-// Firebase 基本ヘルパー
-// ============================================
+// Firebase helpers
 function fbRef(path) { return window.fbFunctions.ref(fbDb, path); }
 async function fbSet(path, data) { return window.fbFunctions.set(fbRef(path), data); }
-async function fbGet(path) {
-    const snap = await window.fbFunctions.get(fbRef(path));
-    return snap.exists() ? snap.val() : null;
-}
-async function fbUpdate(path, updates) { return window.fbFunctions.update(fbRef(path), updates); }
-async function fbRemove(path) { return window.fbFunctions.remove(fbRef(path)); }
-function fbOnValue(path, callback) {
-    const r = fbRef(path);
-    const unsubCallback = window.fbFunctions.onValue(r, (snap) => callback(snap.val()));
-    // onValue は unsubscribe 関数を返す(v9 モジュラー版)
-    const unsubscribe = () => {
-        try { window.fbFunctions.off(r); } catch(e){}
-    };
-    roomUnsubscribers.push(unsubscribe);
-    return unsubscribe;
-}
-
-function cleanupAllListeners() {
-    roomUnsubscribers.forEach(u => { try { u(); } catch(e){} });
-    roomUnsubscribers = [];
-}
+async function fbGet(path) { const s = await window.fbFunctions.get(fbRef(path)); return s.exists() ? s.val() : null; }
+function fbOnValue(path, cb) { return window.fbFunctions.onValue(fbRef(path), s => cb(s.val())); }
+function fbOff(path) { try { window.fbFunctions.off(fbRef(path)); } catch(e){} }
 
 // ============================================
-// ルーム作成
+// ルーム管理
 // ============================================
 async function createRoom() {
-    const userId = getCurrentUserId();
-    const playerName = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
-    if (!userId) throw new Error('Firebase未認証');
-    if (!playerName) throw new Error('名前未設定');
-
+    const uid = getCurrentUserId(), name = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
+    if (!uid || !name) throw new Error('認証or名前が未設定');
     const roomId = generateRoomId();
     await fbSet(`rooms/${roomId}`, {
-        meta: {
-            hostUserId: userId,
-            hostName: playerName,
-            status: 'waiting',
-            createdAt: Date.now()
-        },
-        players: {
-            [userId]: { name: playerName, isHost: true, joinedAt: Date.now() }
-        },
-        sync: {
-            turnId: 0,
-            phase: Phase.LOBBY,
-            day: 0,
-            payload: null
-        }
+        meta: { hostUid: uid, status: 'waiting', createdAt: Date.now() },
+        players: { [uid]: { name, isHost: true, joinedAt: Date.now() } }
     });
-
-    currentRoomId = roomId;
-    isHost = true;
+    currentRoomId = roomId; isHost = true;
     return roomId;
 }
 
-// ============================================
-// ルーム参加
-// ============================================
 async function joinRoom(roomId) {
-    const userId = getCurrentUserId();
-    const playerName = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
-    if (!userId) throw new Error('Firebase未認証');
-    if (!playerName) throw new Error('名前未設定');
-
-    const roomData = await fbGet(`rooms/${roomId}`);
-    if (!roomData) throw new Error('ルームが見つかりません');
-    if (roomData.meta.status !== 'waiting') throw new Error('既にゲームが始まっています');
-
-    const playerCount = Object.keys(roomData.players || {}).length;
-    if (playerCount >= 7) throw new Error('ルームが満員です(最大7人)');
-
-    await fbSet(`rooms/${roomId}/players/${userId}`, {
-        name: playerName, isHost: false, joinedAt: Date.now()
-    });
-
-    currentRoomId = roomId;
-    isHost = false;
-    return roomData;
+    const uid = getCurrentUserId(), name = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
+    if (!uid || !name) throw new Error('認証or名前が未設定');
+    const data = await fbGet(`rooms/${roomId}`);
+    if (!data) throw new Error('ルームが見つかりません');
+    if (data.meta.status !== 'waiting') throw new Error('ゲームが始まっています');
+    if (Object.keys(data.players || {}).length >= 7) throw new Error('満員です');
+    await fbSet(`rooms/${roomId}/players/${uid}`, { name, isHost: false, joinedAt: Date.now() });
+    currentRoomId = roomId; isHost = false;
+    return data;
 }
 
-// ============================================
-// ルーム退出
-// ============================================
 async function leaveRoom() {
     if (!currentRoomId) return;
-    const userId = getCurrentUserId();
-    try {
-        if (isHost) {
-            // ホストがルームを閉じる
-            await fbRemove(`rooms/${currentRoomId}`);
-        } else if (userId) {
-            await fbSet(`rooms/${currentRoomId}/players/${userId}`, null);
-        }
-    } catch(e) { console.warn('leaveRoom err', e); }
-    cleanupAllListeners();
-    currentRoomId = null;
-    isHost = false;
+    const uid = getCurrentUserId();
+    if (uid) try { await fbSet(`rooms/${currentRoomId}/players/${uid}`, null); } catch(e){}
+    stopWatchingRoom(); stopWatchingGame();
+    currentRoomId = null; isHost = false;
 }
 
 // ============================================
-// ルーム監視 (ロビー用)
+// ルーム監視(ロビー用)
 // ============================================
-function watchPlayers(callback) {
+function watchRoom(cb) {
     if (!currentRoomId) return;
-    return fbOnValue(`rooms/${currentRoomId}/players`, callback);
+    stopWatchingRoom();
+    _roomWatcher = fbOnValue(`rooms/${currentRoomId}`, cb);
 }
-function watchMeta(callback) {
-    if (!currentRoomId) return;
-    return fbOnValue(`rooms/${currentRoomId}/meta`, callback);
-}
-function watchSync(callback) {
-    if (!currentRoomId) return;
-    return fbOnValue(`rooms/${currentRoomId}/sync`, callback);
+function stopWatchingRoom() {
+    if (currentRoomId) fbOff(`rooms/${currentRoomId}`);
+    _roomWatcher = null;
 }
 
 // ============================================
-// ホスト: フェーズを進める (turnId 必ずインクリメント)
+// ゲーム状態監視(ゲーム中・全プレイヤー共通)
 // ============================================
-let _localTurnCounter = 0;
-async function broadcastSync(phase, day, payload) {
+let _gameWatcher = null;
+function watchGame(cb) {
+    if (!currentRoomId) return;
+    stopWatchingGame();
+    _gameWatcher = fbOnValue(`rooms/${currentRoomId}/game`, cb);
+}
+function stopWatchingGame() {
+    if (currentRoomId) fbOff(`rooms/${currentRoomId}/game`);
+    _gameWatcher = null;
+}
+
+// ============================================
+// ゲーム状態書き込み(ホスト専用)
+// ============================================
+async function fbWritePhase(phase, data) {
     if (!currentRoomId || !isHost) return;
-    _localTurnCounter = Math.max(_localTurnCounter, Date.now()) + 1;
-    const sync = {
-        turnId: _localTurnCounter,
-        phase: phase,
-        day: day || 0,
-        payload: payload || null,
-        updatedAt: Date.now()
-    };
-    await fbSet(`rooms/${currentRoomId}/sync`, sync);
-    return sync.turnId;
-}
-
-// ============================================
-// ホスト: 個別プレイヤーに役職情報を配信
-// ============================================
-async function writeRoles(rolesByUserId) {
-    if (!currentRoomId || !isHost) return;
+    // phase と phaseData を同時に更新
     const updates = {};
-    for (const [uid, roleData] of Object.entries(rolesByUserId)) {
-        updates[uid] = roleData;
+    updates[`rooms/${currentRoomId}/game/phase`] = phase;
+    updates[`rooms/${currentRoomId}/game/phaseData`] = data || {};
+    updates[`rooms/${currentRoomId}/game/phaseVersion`] = Date.now();
+    await window.fbFunctions.update(fbRef(''), updates);
+}
+
+async function fbWriteRoles(rolesByUid) {
+    if (!currentRoomId || !isHost) return;
+    for (const [uid, data] of Object.entries(rolesByUid)) {
+        await fbSet(`rooms/${currentRoomId}/roles/${uid}`, data);
     }
-    await fbUpdate(`rooms/${currentRoomId}/roles`, updates);
 }
 
-async function getMyRole() {
-    if (!currentRoomId) return null;
-    const userId = getCurrentUserId();
-    return await fbGet(`rooms/${currentRoomId}/roles/${userId}`);
+async function fbWriteResult(winner, players) {
+    if (!currentRoomId || !isHost) return;
+    await fbSet(`rooms/${currentRoomId}/game/result`, { winner, players });
 }
 
 // ============================================
-// プレイヤー → ホスト アクション送信 (inbox)
+// プレイヤーアクション
 // ============================================
-async function submitInboxAction(day, kind, data) {
-    // kind: 'night' | 'vote' | 'message' | 'ack'
+async function fbMarkReady(phase) {
     if (!currentRoomId) return;
-    const userId = getCurrentUserId();
-    await fbSet(
-        `rooms/${currentRoomId}/inbox/day${day}/${kind}/${userId}`,
-        { ...data, at: Date.now() }
-    );
+    const uid = getCurrentUserId();
+    await fbSet(`rooms/${currentRoomId}/ready/${phase}/${uid}`, true);
 }
 
-async function submitNightAction(day, action) {
-    // action: { targetName: '○○' } など
-    return submitInboxAction(day, 'night', action);
-}
-async function submitVote(day, targetName) {
-    return submitInboxAction(day, 'vote', { targetName });
-}
-async function submitMessage(day, text) {
-    const playerName = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
-    return submitInboxAction(day, 'message', { from: playerName, text });
-}
-async function submitAck(day, kind) {
-    return submitInboxAction(day, `ack_${kind}`, { ok: true });
-}
-
-// ============================================
-// ホスト: inbox を読み取り
-// ============================================
-async function getInbox(day, kind) {
-    if (!currentRoomId || !isHost) return {};
-    return await fbGet(`rooms/${currentRoomId}/inbox/day${day}/${kind}`) || {};
-}
-
-// ホスト: 条件を満たすまで inbox をポーリング待機
-//   expectedUserIds: Set<string> 待機すべき userId
-//   timeoutMs: タイムアウト (ms)
-async function waitForInbox(day, kind, expectedUserIds, timeoutMs = 60000) {
-    if (!currentRoomId || !isHost) return {};
-    const start = Date.now();
-    const pollInterval = 1500;
-    while (Date.now() - start < timeoutMs) {
-        const data = await getInbox(day, kind);
-        const submitted = new Set(Object.keys(data));
-        let allDone = true;
-        for (const uid of expectedUserIds) {
-            if (!submitted.has(uid)) { allDone = false; break; }
-        }
-        if (allDone) return data;
-        await sleep(pollInterval);
-    }
-    // タイムアウト: 現状のデータを返す
-    console.warn(`[HOST] waitForInbox timeout: day=${day} kind=${kind}`);
-    return await getInbox(day, kind);
-}
-
-// ============================================
-// 最終結果の書き込み
-// ============================================
-async function writeGameResult(winner, players) {
+async function fbClearReady(phase) {
     if (!currentRoomId || !isHost) return;
-    await fbSet(`rooms/${currentRoomId}/result`, { winner, players, at: Date.now() });
+    await fbSet(`rooms/${currentRoomId}/ready/${phase}`, null);
 }
 
-async function writeThoughtsLog(thoughtsData) {
-    if (!currentRoomId || !isHost) return;
-    await fbSet(`rooms/${currentRoomId}/thoughts`, thoughtsData);
-}
-async function getThoughtsLog() {
-    if (!currentRoomId) return null;
-    return await fbGet(`rooms/${currentRoomId}/thoughts`);
+function fbWatchReady(phase, cb) {
+    if (!currentRoomId) return;
+    fbOnValue(`rooms/${currentRoomId}/ready/${phase}`, cb);
 }
 
-// ============================================
-// ルーム状態更新
-// ============================================
-async function setRoomStatus(status) {
-    if (!currentRoomId || !isHost) return;
-    await fbSet(`rooms/${currentRoomId}/meta/status`, status);
+async function fbSubmitVote(day, targetName) {
+    if (!currentRoomId) return;
+    const uid = getCurrentUserId();
+    await fbSet(`rooms/${currentRoomId}/votes/day${day}/${uid}`, targetName);
+}
+
+async function fbSubmitMessage(day, message) {
+    if (!currentRoomId) return;
+    const uid = getCurrentUserId();
+    const name = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
+    await fbSet(`rooms/${currentRoomId}/messages/day${day}/${uid}`, { from: name, text: message });
+}
+
+async function fbSubmitNightAction(day, action) {
+    if (!currentRoomId) return;
+    const uid = getCurrentUserId();
+    await fbSet(`rooms/${currentRoomId}/nightActions/day${day}/${uid}`, action);
+}
+
+async function fbGetVotes(day) { return await fbGet(`rooms/${currentRoomId}/votes/day${day}`) || {}; }
+async function fbGetMessages(day) {
+    const d = await fbGet(`rooms/${currentRoomId}/messages/day${day}`);
+    return d ? Object.values(d) : [];
+}
+async function fbGetNightActions(day) { return await fbGet(`rooms/${currentRoomId}/nightActions/day${day}`) || {}; }
+async function fbGetMyRole() { return await fbGet(`rooms/${currentRoomId}/roles/${getCurrentUserId()}`); }
+async function fbGetHumanUids() {
+    const players = await fbGet(`rooms/${currentRoomId}/players`);
+    return players ? Object.keys(players) : [];
+}
+
+// 全プレイヤーが準備完了するまで待つPromise
+function waitForAllReady(phase, expectedUids) {
+    return new Promise((resolve) => {
+        const path = `rooms/${currentRoomId}/ready/${phase}`;
+        const unsub = fbOnValue(path, (data) => {
+            if (!data) return;
+            const readyUids = Object.keys(data);
+            const allReady = expectedUids.every(uid => readyUids.includes(uid));
+            if (allReady) {
+                fbOff(path);
+                resolve();
+            }
+        });
+    });
+}
+
+// タイムアウト付き待機
+function waitForAllReadyWithTimeout(phase, expectedUids, timeoutMs = 60000) {
+    return new Promise((resolve) => {
+        const path = `rooms/${currentRoomId}/ready/${phase}`;
+        let resolved = false;
+        const timer = setTimeout(() => {
+            if (!resolved) { resolved = true; fbOff(path); resolve('timeout'); }
+        }, timeoutMs);
+        fbOnValue(path, (data) => {
+            if (resolved) return;
+            if (!data) return;
+            const readyUids = Object.keys(data);
+            const allReady = expectedUids.every(uid => readyUids.includes(uid));
+            if (allReady) {
+                resolved = true; clearTimeout(timer); fbOff(path); resolve('ready');
+            }
+        });
+    });
 }
