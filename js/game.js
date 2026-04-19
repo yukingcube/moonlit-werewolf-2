@@ -220,18 +220,23 @@ async function showNightActionUI(player) {
     document.getElementById('night-title').textContent = `Day ${gameState.day} - 夜`;
     showScreen(Screen.NIGHT);
 
+    const addFinishBtn = (html) => {
+        action.innerHTML = html + `<button class="btn-primary night-finish-btn" style="margin-top:20px;"><span class="btn-text">確認した</span></button>`;
+        action.querySelector('.night-finish-btn').addEventListener('click', () => finishNightAction());
+    };
+
     if (player.role === 'medium') {
         if (gameState.day === 1) {
-            action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">今夜はまだ霊媒の対象がいません</p><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+            addFinishBtn('<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">今夜はまだ霊媒の対象がいません</p>');
         } else {
             const lastDay = gameState.history[gameState.history.length - 1];
             if (lastDay?.execution) {
                 const ex = findPlayerByName(lastDay.execution);
                 gameState.mediumResults.push({ target: lastDay.execution, role: ex.role });
                 gameState.currentDayData.medium = { target: lastDay.execution, role: ex.role };
-                action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><div class="fortune-result"><div class="fortune-result-text">${escapeHtml(lastDay.execution)} の正体は</div><div class="fortune-result-role">${ROLES[ex.role].icon} ${ROLES[ex.role].name}</div></div><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+                addFinishBtn(`<div class="night-action-title">👻 霊媒師</div><div class="fortune-result"><div class="fortune-result-text">${escapeHtml(lastDay.execution)} の正体は</div><div class="fortune-result-role">${ROLES[ex.role].icon} ${ROLES[ex.role].name}</div></div>`);
             } else {
-                action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">対象がいません</p><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+                addFinishBtn('<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">対象がいません</p>');
             }
         }
         return;
@@ -239,12 +244,12 @@ async function showNightActionUI(player) {
 
     if (player.role === 'werewolf' && gameState.day === 1) {
         const allies = gameState.players.filter(p => p.role === 'werewolf' && p.id !== player.id).map(p => p.name);
-        action.innerHTML = `<div class="night-action-title">🐺 人狼</div><p class="night-action-desc">初日は仲間を確認しましょう。</p><div class="fortune-result"><div class="fortune-result-text">仲間の人狼</div><div class="fortune-result-role" style="color:var(--color-accent-red-glow);font-size:20px;margin-top:15px;">${escapeHtml(allies.join('、'))}</div></div><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+        addFinishBtn(`<div class="night-action-title">🐺 人狼</div><p class="night-action-desc">初日は仲間を確認しましょう。</p><div class="fortune-result"><div class="fortune-result-text">仲間の人狼</div><div class="fortune-result-role" style="color:var(--color-accent-red-glow);font-size:20px;margin-top:15px;">${escapeHtml(allies.join('、'))}</div></div>`);
         return;
     }
 
     if (player.role === 'knight' && gameState.day === 1) {
-        action.innerHTML = `<div class="night-action-title">🛡️ 騎士</div><p class="night-action-desc">初日は襲撃がないため護衛不要です。</p><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+        addFinishBtn('<div class="night-action-title">🛡️ 騎士</div><p class="night-action-desc">初日は襲撃がないため護衛不要です。</p>');
         return;
     }
 
@@ -259,39 +264,71 @@ async function showNightActionUI(player) {
         const wolfIds = gameState.players.filter(p => p.role === 'werewolf').map(p => p.id);
         targets = targets.filter(p => !wolfIds.includes(p.id));
     }
-    const gridHtml = targets.map(p => `<div class="night-target" onclick="selectNightTarget('${p.id}')" data-target-id="${p.id}"><div class="night-target-emoji">${p.avatar}</div><div class="night-target-name">${escapeHtml(p.name)}</div></div>`).join('');
+    console.log('[Night] targets for', player.name, ':', targets.map(t => t.name));
+
+    if (targets.length === 0) {
+        action.innerHTML = `<div class="night-action-title">${title}</div><p class="night-action-desc">対象がいません</p><button class="btn-primary night-finish-btn" style="margin-top:20px;"><span class="btn-text">確認した</span></button>`;
+        action.querySelector('.night-finish-btn').addEventListener('click', () => finishNightAction());
+        return;
+    }
+
+    const gridHtml = targets.map(p => `<div class="night-target" data-target-id="${p.id}"><div class="night-target-emoji">${p.avatar}</div><div class="night-target-name">${escapeHtml(p.name)}</div></div>`).join('');
     action.innerHTML = `<div class="night-action-title">${title}</div><p class="night-action-desc">${desc}</p><div class="night-target-grid">${gridHtml}</div><div id="night-confirm-area"></div>`;
+
+    // イベントリスナーで対象選択（onclick属性ではなくaddEventListenerを使う）
+    action.querySelectorAll('.night-target').forEach(el => {
+        el.addEventListener('click', function() {
+            const targetId = this.dataset.targetId;
+            _selectedNightTarget = targetId;
+            action.querySelectorAll('.night-target').forEach(e => e.classList.remove('selected'));
+            this.classList.add('selected');
+            document.getElementById('night-confirm-area').innerHTML = `<button class="btn-primary" style="margin-top:20px;" id="night-confirm-btn"><span class="btn-text">決定</span></button>`;
+            document.getElementById('night-confirm-btn').addEventListener('click', () => confirmNightAction());
+        });
+    });
 }
 
 let _selectedNightTarget = null;
-function selectNightTarget(targetId) {
-    _selectedNightTarget = targetId;
-    document.querySelectorAll('.night-target').forEach(el => el.classList.toggle('selected', el.dataset.targetId === targetId));
-    document.getElementById('night-confirm-area').innerHTML = `<button class="btn-primary" style="margin-top:20px;" onclick="confirmNightAction()"><span class="btn-text">決定</span></button>`;
-}
 
 async function confirmNightAction() {
     if (!_selectedNightTarget) return;
     const target = gameState.players.find(p => p.id === _selectedNightTarget);
     const local = getLocalPlayer();
     if (!target || !local) return;
+    const action = document.getElementById('night-action');
+
+    // 占い結果表示のヘルパー
+    function showSeerResult(isW) {
+        action.innerHTML = `<div class="night-action-title">🔮 占いの結果</div><div class="fortune-result"><div class="fortune-result-text">${escapeHtml(target.name)} の正体は</div><div class="fortune-result-role" style="color:${isW?'var(--color-accent-red-glow)':'var(--color-accent-moon)'}">${isW?'🐺 人狼':'✨ 人狼ではない'}</div></div><button class="btn-primary night-finish-btn" style="margin-top:20px;"><span class="btn-text">確認した</span></button>`;
+        action.querySelector('.night-finish-btn').addEventListener('click', () => finishNightAction());
+    }
 
     if (multiplayerMode) {
-        // マルチプレイ: Firebaseに書き込み
         await fbSubmitNightAction(gameState.day, { role: local.role, targetName: target.name });
+
+        if (local.role === 'seer') {
+            const isW = target.role === 'werewolf';
+            gameState.fortuneResults.push({ target: target.name, isWerewolf: isW });
+            gameState.currentDayData.fortune = { target: target.name, isWerewolf: isW };
+            showSeerResult(isW);
+            _selectedNightTarget = null;
+            return;
+        }
+
+        await fbMarkReady(`night_day${gameState.day}`);
         showWaiting('他のプレイヤーを待っています…', '');
         _selectedNightTarget = null;
         return;
     }
 
-    // ソロプレイ: 直接処理
+    // ソロプレイ
     if (local.role === 'werewolf') {
         gameState.currentDayData._humanAttackChoice = target.name;
     } else if (local.role === 'seer') {
         const isW = target.role === 'werewolf';
         gameState.fortuneResults.push({ target: target.name, isWerewolf: isW });
         gameState.currentDayData.fortune = { target: target.name, isWerewolf: isW };
-        document.getElementById('night-action').innerHTML = `<div class="night-action-title">🔮 占いの結果</div><div class="fortune-result"><div class="fortune-result-text">${escapeHtml(target.name)} の正体は</div><div class="fortune-result-role" style="color:${isW?'var(--color-accent-red-glow)':'var(--color-accent-moon)'}">${isW?'🐺 人狼':'✨ 人狼ではない'}</div></div><button class="btn-primary" onclick="finishNightAction()"><span class="btn-text">確認した</span></button>`;
+        showSeerResult(isW);
         _selectedNightTarget = null;
         return;
     } else if (local.role === 'knight') {

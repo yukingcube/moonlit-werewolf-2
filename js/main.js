@@ -342,21 +342,24 @@ function showGuestNightAction(myRole, day) {
 
     const role = myRole.role;
 
+    const addGuestFinishBtn = (html) => {
+        action.innerHTML = html + `<button class="btn-primary guest-night-finish" style="margin-top:20px;"><span class="btn-text">確認した</span></button>`;
+        action.querySelector('.guest-night-finish').addEventListener('click', () => guestFinishNight(day));
+    };
+
     if (role === 'medium') {
-        if (day === 1) {
-            action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">今夜はまだ対象がいません</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
-        } else {
-            action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">霊媒結果はホストが処理します</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
-        }
+        addGuestFinishBtn(day === 1
+            ? '<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">今夜はまだ対象がいません</p>'
+            : '<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">霊媒結果はホストが処理します</p>');
         return;
     }
     if (role === 'werewolf' && day === 1) {
         const allies = myRole.allies || [];
-        action.innerHTML = `<div class="night-action-title">🐺 人狼</div><p class="night-action-desc">初日は仲間を確認しましょう。</p><div class="fortune-result"><div class="fortune-result-text">仲間の人狼</div><div class="fortune-result-role" style="color:var(--color-accent-red-glow);font-size:20px;margin-top:15px;">${escapeHtml(allies.join('、'))}</div></div><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
+        addGuestFinishBtn(`<div class="night-action-title">🐺 人狼</div><p class="night-action-desc">初日は仲間を確認しましょう。</p><div class="fortune-result"><div class="fortune-result-text">仲間の人狼</div><div class="fortune-result-role" style="color:var(--color-accent-red-glow);font-size:20px;margin-top:15px;">${escapeHtml(allies.join('、'))}</div></div>`);
         return;
     }
     if (role === 'knight' && day === 1) {
-        action.innerHTML = `<div class="night-action-title">🛡️ 騎士</div><p class="night-action-desc">初日は護衛不要です。</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
+        addGuestFinishBtn('<div class="night-action-title">🛡️ 騎士</div><p class="night-action-desc">初日は護衛不要です。</p>');
         return;
     }
 
