@@ -301,6 +301,9 @@ async function handleNightPhase(pd) {
     const myRole = await fbGetMyRole();
     if (!myRole) { showWaiting('夜の処理中…', ''); return; }
 
+    // 生存者リストを保存（ゲストの能力行使用）
+    window._nightAlivePlayers = pd.alivePlayers || [];
+
     document.getElementById('night-title').textContent = pd.title || `Day ${pd.day || 1} - 夜`;
     document.getElementById('night-subtitle').textContent = '村は眠りについた…';
 
@@ -343,7 +346,7 @@ function showGuestNightAction(myRole, day) {
         if (day === 1) {
             action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">今夜はまだ対象がいません</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
         } else {
-            action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">ホストが霊媒結果を処理中です…</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
+            action.innerHTML = `<div class="night-action-title">👻 霊媒師</div><p class="night-action-desc">霊媒結果はホストが処理します</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
         }
         return;
     }
@@ -357,9 +360,40 @@ function showGuestNightAction(myRole, day) {
         return;
     }
 
-    // ゲストの能力行使(対象選択はFirebase経由)
-    // ゲストはgameStateを持っていないため、簡易版
-    action.innerHTML = `<div class="night-action-title">${role==='seer'?'🔮 占い師':role==='knight'?'🛡️ 騎士':'🐺 人狼'}</div><p class="night-action-desc">ホストのゲーム画面で処理中です。しばらくお待ちください。</p><button class="btn-primary" onclick="guestFinishNight(${day})"><span class="btn-text">確認した</span></button>`;
+    // 占い師・騎士(Day2+)・人狼(Day2+): 対象選択UI
+    let title, desc;
+    if (role === 'seer') { title = '🔮 誰を占う?'; desc = '人狼かどうかが分かります'; }
+    else if (role === 'knight') { title = '🛡️ 誰を守る?'; desc = '襲撃から守ります'; }
+    else if (role === 'werewolf') { title = '🐺 誰を襲撃する?'; desc = '村人を1人選んで襲撃'; }
+
+    // 生存者リストから対象グリッドを生成
+    const myName = localStorage.getItem(STORAGE_KEYS.PLAYER_NAME);
+    let targets = (window._nightAlivePlayers || []).filter(p => p.name !== myName);
+    if (role === 'werewolf') {
+        // 仲間の人狼を除外
+        const allies = myRole.allies || [];
+        targets = targets.filter(p => !allies.includes(p.name));
+    }
+
+    const gridHtml = targets.map(p => `<div class="night-target" data-guest-target="${escapeHtml(p.name)}" data-guest-day="${day}" data-guest-role="${role}"><div class="night-target-emoji">${p.avatar}</div><div class="night-target-name">${escapeHtml(p.name)}</div></div>`).join('');
+
+    action.innerHTML = `<div class="night-action-title">${title}</div><p class="night-action-desc">${desc}</p><div class="night-target-grid">${gridHtml}</div><div id="night-confirm-area"></div>`;
+
+    // クリックイベント
+    action.querySelectorAll('.night-target').forEach(el => {
+        el.addEventListener('click', function() {
+            action.querySelectorAll('.night-target').forEach(e => e.classList.remove('selected'));
+            this.classList.add('selected');
+            const targetName = this.dataset.guestTarget;
+            document.getElementById('night-confirm-area').innerHTML = `<button class="btn-primary" style="margin-top:20px;" id="guest-night-confirm"><span class="btn-text">決定</span></button>`;
+            document.getElementById('guest-night-confirm').addEventListener('click', async () => {
+                await fbSubmitNightAction(day, { role, targetName });
+                // 占い師の結果は朝フェーズで表示(ホストが処理後にブロードキャスト)
+                await fbMarkReady(`night_day${day}`);
+                showWaiting('他のプレイヤーを待っています…', '');
+            });
+        });
+    });
 }
 
 async function guestFinishNight(day) {
@@ -374,7 +408,9 @@ async function hostStartNight() {
     await fbClearReady('role');
     gameState.phase = 'night';
     gameState.currentDayData = { attack: null, fortune: null, guard: null, medium: null, morningSpeeches: [], messages: [], votes: {}, execution: null };
-    await fbWritePhase('night', { day: gameState.day, title: `Day ${gameState.day} - 夜` });
+    // 生存者リストを含めてブロードキャスト（ゲストの能力行使用）
+    const alivePlayers = getAlivePlayers().map(p => ({ name: p.name, avatar: p.avatar, isHuman: p.isHuman, id: p.id }));
+    await fbWritePhase('night', { day: gameState.day, title: `Day ${gameState.day} - 夜`, alivePlayers });
 
     // 全員のreadyを待ってから処理
     if (!_mpHumanUids.length) _mpHumanUids = await fbGetHumanUids();
